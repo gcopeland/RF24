@@ -357,6 +357,11 @@ void RF24::begin(void)
   // WARNING: Delay is based on P-variant whereby non-P *may* require different timing.
   delay( 5 ) ;
 
+  //Initialize some register, seems they are different between some nRF24L01+ chips and cause errors.
+  write_register(EN_RXADDR, 0x03);
+  write_register(RF_SETUP, 0x07);
+  write_register(CONFIG, 0x0F);
+
   // Set 1500uS (minimum for 32B payload in ESB@250KBPS) timeouts, to make testing a little easier
   // WARNING: If this is ever lowered, either 250KBS mode with AA is broken or maximum packet
   // sizes must never be used. See documentation for a more complete explanation.
