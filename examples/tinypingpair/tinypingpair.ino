@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2011 James Coliz, Jr. <maniacbug@ymail.com>
+ Copyright (C) 2011 J. Coliz <maniacbug@ymail.com>
 
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License
@@ -14,18 +14,17 @@
  * which responds by sending the value back.  The ping node can then see how long the whole cycle
  * took.
  */
-
 #include <SPI.h>
-#include <RF24.h>
-#include "printf.h"
+#include "nRF24L01.h"
+#include "RF24.h"
 
 //
 // Hardware configuration
 //
 
-// Set up nRF24L01 radio on SPI bus plus pins 8 & 9
+// Set up nRF24L01 radio on SPI bus plus pins 9 & 10
 
-RF24 radio(8,9);
+RF24Debug radio(2,3);
 
 // sets the role of this unit in hardware.  Connect to GND to be the 'pong' receiver
 // Leave open to be the 'ping' transmitter
@@ -62,26 +61,31 @@ void setup(void)
   //
   // Role
   //
-
+  Serial.begin(9600);
+  Serial.println("hello world");
+  
   // set up the role pin
   pinMode(role_pin, INPUT);
   digitalWrite(role_pin,HIGH);
   delay(20); // Just to get a solid reading on the role pin
 
-  // read the address pin, establish our role
-  if ( digitalRead(role_pin) )
     role = role_ping_out;
-  else
+
+/*
+  // read the address pin, establish our role
+  if ( ! digitalRead(role_pin) ) {
+    role = role_ping_out;
+    Serial.println("ping out");
+  } else {
     role = role_pong_back;
+    Serial.println("pong back");
+  }
+*/
 
   //
   // Print preamble
   //
 
-  Serial.begin(57600);
-  printf_begin();
-  printf("\n\rRF24/examples/pingpair/\n\r");
-  printf("ROLE: %s\n\r",role_friendly_name[role]);
 
   //
   // Setup and configure rf radio
@@ -90,11 +94,11 @@ void setup(void)
   radio.begin();
 
   // optionally, increase the delay between retries & # of retries
-  // radio.setRetries(15,15);
+//  radio.setRetries(15,15);
 
   // optionally, reduce the payload size.  seems to
   // improve reliability
-  // radio.setPayloadSize(8);
+//  radio.setPayloadSize(8);
 
   //
   // Open pipes to other nodes for communication
@@ -119,16 +123,10 @@ void setup(void)
   //
   // Start listening
   //
-  // if( radio.setDataRate( RF24_250KBPS ) ) {
-  //   printf( "Data rate 250KBPS set!\n\r" ) ;
-  // } else {
-  //   printf( "Data rate 250KBPS set FAILED!!\n\r" ) ;
-  // }
-  // radio.setDataRate( RF24_2MBPS ) ;
-  // radio.setPALevel( RF24_PA_MAX ) ;
   radio.enableDynamicPayloads() ;
   radio.setAutoAck( true ) ;
   radio.powerUp() ;
+
   radio.startListening();
 
   //
@@ -151,9 +149,16 @@ void loop(void)
 
     // Take the time, and send it.  This will block until complete
     unsigned long time = millis();
-    printf("Now sending %lu...",time);
-    radio.write( &time, sizeof(unsigned long) );
-
+    Serial.print("Sending ");
+    Serial.println(time);
+    bool ok = radio.write( &time, sizeof(unsigned long) );
+    
+    if (ok) {
+      Serial.println("ok");
+    } else {
+      Serial.println("failed");
+    }
+    
     // Now, continue listening
     radio.startListening();
 
@@ -161,14 +166,13 @@ void loop(void)
     unsigned long started_waiting_at = millis();
     bool timeout = false;
     while ( ! radio.available() && ! timeout )
-      if (millis() - started_waiting_at > 1+(radio.getMaxTimeout()/1000) )
+      if (millis() - started_waiting_at > 200 )
         timeout = true;
 
     // Describe the results
     if ( timeout )
     {
-      printf("Failed, response timed out.\n\r");
-      printf("Timeout duration: %d\n\r", (1+radio.getMaxTimeout()/1000) ) ;
+      Serial.println("Failed, response timed out");
     }
     else
     {
@@ -177,7 +181,10 @@ void loop(void)
       radio.read( &got_time, sizeof(unsigned long) );
 
       // Spew it
-      printf("Got response %lu, round-trip delay: %lu\n\r",got_time,millis()-got_time);
+      Serial.print("Got response ");
+      Serial.print(got_time);
+      Serial.print(", round-trip delay: ");
+      Serial.println(millis() - got_time);
     }
 
     // Try again 1s later
@@ -191,6 +198,7 @@ void loop(void)
   if ( role == role_pong_back )
   {
     // if there is data ready
+
     if ( radio.available() )
     {
       // Dump the payloads until we've gotten everything
@@ -200,15 +208,22 @@ void loop(void)
       {
         // Fetch the payload, and see if this was the last one.
         done = radio.read( &got_time, sizeof(unsigned long) );
+
+        // Spew it
+        Serial.print("Got payload ");
+        Serial.println(got_time);
+
+	// Delay just a little bit to let the other unit
+	// make the transition to receiver
+	delay(20);
       }
 
       // First, stop listening so we can talk
       radio.stopListening();
 
-      // Send the final one back. This way, we don't delay
-      // the reply while we wait on serial i/o.
+      // Send the final one back.
       radio.write( &got_time, sizeof(unsigned long) );
-      printf("Sent response %lu\n\r", got_time);
+      Serial.println("Sent response");
 
       // Now, resume listening so we catch the next packets.
       radio.startListening();

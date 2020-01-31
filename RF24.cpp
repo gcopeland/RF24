@@ -83,7 +83,7 @@ uint8_t RF24::write_register(uint8_t reg, uint8_t value)
 {
   uint8_t status;
 
-  IF_SERIAL_DEBUG(printf_P(PSTR("write_register(%02x,%02x)\r\n"),reg,value));
+  on_write_register(reg, value);
 
   csn(LOW);
   status = SPI.transfer( W_REGISTER | ( REGISTER_MASK & reg ) );
@@ -104,7 +104,7 @@ uint8_t RF24::write_payload(const void* buf, uint8_t len, const uint8_t writeTyp
   uint8_t data_len = min(len,payload_size);
   uint8_t blank_len = dynamic_payloads_enabled ? 0 : payload_size - data_len;
 
-  //printf("[Writing %u bytes %u blanks]",data_len,blank_len);
+  on_write_payload(data_len, blank_len);
 
   csn(LOW);
   status = SPI.transfer( writeType );
@@ -127,7 +127,7 @@ uint8_t RF24::read_payload(void* buf, uint8_t len)
   uint8_t data_len = min(len,payload_size);
   uint8_t blank_len = dynamic_payloads_enabled ? 0 : payload_size - data_len;
   
-  //printf("[Reading %u bytes %u blanks]",data_len,blank_len);
+  on_read_payload(data_len, blank_len);
   
   csn(LOW);
   status = SPI.transfer( R_RX_PAYLOAD );
@@ -181,63 +181,6 @@ uint8_t RF24::get_status(void)
 
 /****************************************************************************/
 
-void RF24::print_status(uint8_t status)
-{
-  printf_P(PSTR("STATUS\t\t = 0x%02x RX_DR=%x TX_DS=%x MAX_RT=%x RX_P_NO=%x TX_FULL=%x\r\n"),
-           status,
-           (status & _BV(RX_DR))?1:0,
-           (status & _BV(TX_DS))?1:0,
-           (status & _BV(MAX_RT))?1:0,
-           ((status >> RX_P_NO) & B111),
-           (status & _BV(TX_FULL))?1:0
-          );
-}
-
-/****************************************************************************/
-
-void RF24::print_observe_tx(uint8_t value)
-{
-  printf_P(PSTR("OBSERVE_TX=%02x: POLS_CNT=%x ARC_CNT=%x\r\n"),
-           value,
-           (value >> PLOS_CNT) & B1111,
-           (value >> ARC_CNT) & B1111
-          );
-}
-
-/****************************************************************************/
-
-void RF24::print_byte_register(const char* name, uint8_t reg, uint8_t qty)
-{
-  char extra_tab = strlen_P(name) < 8 ? '\t' : 0;
-  printf_P(PSTR(PRIPSTR"\t%c ="),name,extra_tab);
-  while (qty--)
-    printf_P(PSTR(" 0x%02x"),read_register(reg++));
-  printf_P(PSTR("\r\n"));
-}
-
-/****************************************************************************/
-
-void RF24::print_address_register(const char* name, uint8_t reg, uint8_t qty)
-{
-  char extra_tab = strlen_P(name) < 8 ? '\t' : 0;
-  printf_P(PSTR(PRIPSTR"\t%c ="),name,extra_tab);
-
-  while (qty--)
-  {
-    uint8_t buffer[5];
-    read_register(reg++,buffer,sizeof buffer);
-
-    printf_P(PSTR(" 0x"));
-    uint8_t* bufptr = buffer + sizeof buffer;
-    while( --bufptr >= buffer )
-      printf_P(PSTR("%02x"),*bufptr);
-  }
-
-  printf_P(PSTR("\r\n"));
-}
-
-/****************************************************************************/
-
 RF24::RF24(uint8_t _cepin, uint8_t _cspin):
   ce_pin(_cepin), csn_pin(_cspin), wide_band(false), p_variant(false), 
   payload_size(32), ack_payload_available(false), dynamic_payloads_enabled(false),
@@ -276,63 +219,6 @@ void RF24::setPayloadSize(uint8_t size)
 uint8_t RF24::getPayloadSize(void)
 {
   return payload_size;
-}
-
-/****************************************************************************/
-
-static const char rf24_datarate_e_str_0[] PROGMEM = "1MBPS";
-static const char rf24_datarate_e_str_1[] PROGMEM = "2MBPS";
-static const char rf24_datarate_e_str_2[] PROGMEM = "250KBPS";
-static const char * const rf24_datarate_e_str_P[] PROGMEM = {
-  rf24_datarate_e_str_0,
-  rf24_datarate_e_str_1,
-  rf24_datarate_e_str_2,
-};
-static const char rf24_model_e_str_0[] PROGMEM = "nRF24L01";
-static const char rf24_model_e_str_1[] PROGMEM = "nRF24L01+";
-static const char * const rf24_model_e_str_P[] PROGMEM = {
-  rf24_model_e_str_0,
-  rf24_model_e_str_1,
-};
-static const char rf24_crclength_e_str_0[] PROGMEM = "Disabled";
-static const char rf24_crclength_e_str_1[] PROGMEM = "8 bits";
-static const char rf24_crclength_e_str_2[] PROGMEM = "16 bits" ;
-static const char * const rf24_crclength_e_str_P[] PROGMEM = {
-  rf24_crclength_e_str_0,
-  rf24_crclength_e_str_1,
-  rf24_crclength_e_str_2,
-};
-static const char rf24_pa_dbm_e_str_0[] PROGMEM = "PA_MIN";
-static const char rf24_pa_dbm_e_str_1[] PROGMEM = "PA_LOW";
-static const char rf24_pa_dbm_e_str_2[] PROGMEM = "PA_HIGH";
-static const char rf24_pa_dbm_e_str_3[] PROGMEM = "PA_MAX";
-static const char * const rf24_pa_dbm_e_str_P[] PROGMEM = { 
-  rf24_pa_dbm_e_str_0,
-  rf24_pa_dbm_e_str_1,
-  rf24_pa_dbm_e_str_2,
-  rf24_pa_dbm_e_str_3,
-};
-
-void RF24::printDetails(void)
-{
-  print_status(get_status());
-
-  print_address_register(PSTR("RX_ADDR_P0-1"),RX_ADDR_P0,2);
-  print_byte_register(PSTR("RX_ADDR_P2-5"),RX_ADDR_P2,4);
-  print_address_register(PSTR("TX_ADDR"),TX_ADDR);
-
-  print_byte_register(PSTR("RX_PW_P0-6"),RX_PW_P0,6);
-  print_byte_register(PSTR("EN_AA"),EN_AA);
-  print_byte_register(PSTR("EN_RXADDR"),EN_RXADDR);
-  print_byte_register(PSTR("RF_CH"),RF_CH);
-  print_byte_register(PSTR("RF_SETUP"),RF_SETUP);
-  print_byte_register(PSTR("CONFIG"),CONFIG);
-  print_byte_register(PSTR("DYNPD/FEATURE"),DYNPD,2);
-
-  printf_P(PSTR("Data Rate\t = %S\r\n"),pgm_read_word(&rf24_datarate_e_str_P[getDataRate()]));
-  printf_P(PSTR("Model\t\t = %S\r\n"),pgm_read_word(&rf24_model_e_str_P[isPVariant()]));
-  printf_P(PSTR("CRC Length\t = %S\r\n"),pgm_read_word(&rf24_crclength_e_str_P[getCRCLength()]));
-  printf_P(PSTR("PA Power\t = %S\r\n"),pgm_read_word(&rf24_pa_dbm_e_str_P[getPALevel()]));
 }
 
 /****************************************************************************/
@@ -386,7 +272,7 @@ void RF24::begin(void)
 
   // Reset current status
   // Notice reset and flush is the last thing we do
-  write_register(STATUS,_BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT) );
+  write_register(STATUS_,_BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT) );
 
   // Set up default configuration.  Callers can always change it later.
   // This channel should be universally safe and not bleed over into adjacent
@@ -403,7 +289,7 @@ void RF24::begin(void)
 void RF24::startListening(void)
 {
   write_register(CONFIG, read_register(CONFIG) | _BV(PWR_UP) | _BV(PRIM_RX));
-  write_register(STATUS, _BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT) );
+  write_register(STATUS_, _BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT) );
 
   // Restore the pipe0 adddress, if exists
   if (pipe0_reading_address)
@@ -465,7 +351,7 @@ bool RF24::write( const void* buf, uint8_t len, const bool multicast )
 
   // IN the end, the send should be blocking.  It comes back in 60ms worst case.
   // Generally much faster.
-  uint8_t observe_tx;
+  uint8_t obs;
   uint8_t status;
   uint32_t sent_at = micros();
   const uint16_t timeout = getMaxTimeout() ; //us to wait for timeout
@@ -473,8 +359,8 @@ bool RF24::write( const void* buf, uint8_t len, const bool multicast )
   // Monitor the send
   do
   {
-    status = read_register(OBSERVE_TX,&observe_tx,1);
-    IF_SERIAL_DEBUG(Serial.print(observe_tx,HEX));
+    status = read_register(OBSERVE_TX, &obs, 1);
+    observe_tx(obs);
   }
   while( ! ( status & ( _BV(TX_DS) | _BV(MAX_RT) ) ) && ( micros() - sent_at < timeout ) );
 
@@ -490,17 +376,13 @@ bool RF24::write( const void* buf, uint8_t len, const bool multicast )
   bool tx_ok, tx_fail;
   whatHappened(tx_ok,tx_fail,ack_payload_available);
 
-  //printf("%u%u%u\r\n",tx_ok,tx_fail,ack_payload_available);
-
   result = tx_ok;
-  IF_SERIAL_DEBUG(Serial.print(result?"...OK.":"...Failed"));
 
   // Handle the ack packet
   if ( ack_payload_available )
   {
     ack_payload_length = getDynamicPayloadSize();
-    IF_SERIAL_DEBUG(Serial.print("[AckPacket]/"));
-    IF_SERIAL_DEBUG(Serial.println(ack_payload_length,DEC));
+    on_ack(ack_payload_length);
   }
 
   return result;
@@ -549,9 +431,6 @@ bool RF24::available(uint8_t* pipe_num)
 {
   uint8_t status = get_status();
 
-  // Too noisy, enable if you really want lots o data!!
-  //IF_SERIAL_DEBUG(print_status(status));
-
   bool result = ( status & _BV(RX_DR) );
 
   if (result)
@@ -565,12 +444,12 @@ bool RF24::available(uint8_t* pipe_num)
     // ??? Should this REALLY be cleared now?  Or wait until we
     // actually READ the payload?
 
-    write_register(STATUS,_BV(RX_DR) );
+    write_register(STATUS_,_BV(RX_DR) );
 
     // Handle ack payload receipt
     if ( status & _BV(TX_DS) )
     {
-      write_register(STATUS,_BV(TX_DS));
+      write_register(STATUS_,_BV(TX_DS));
     }
   }
 
@@ -594,7 +473,9 @@ void RF24::whatHappened(bool& tx_ok,bool& tx_fail,bool& rx_ready)
 {
   // Read the status & reset the status in one easy call
   // Or is that such a good idea?
-  uint8_t status = write_register(STATUS,_BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT) );
+  uint8_t status = write_register(STATUS_,_BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT) );
+
+  on_status(status);
 
   // Report to the user what happened
   tx_ok = status & _BV(TX_DS);
@@ -688,8 +569,6 @@ void RF24::enableDynamicPayloads(void)
     write_register(FEATURE,read_register(FEATURE) | _BV(EN_DPL) );
   }
 
-  IF_SERIAL_DEBUG(printf("FEATURE=%i\r\n",read_register(FEATURE)));
-
   // Enable dynamic payload on all pipes
   //
   // Not sure the use case of only having dynamic payload on certain
@@ -716,8 +595,6 @@ void RF24::enableAckPayload(void)
     toggle_features();
     write_register(FEATURE,read_register(FEATURE) | _BV(EN_DYN_ACK) | _BV(EN_ACK_PAY) | _BV(EN_DPL) );
   }
-
-  IF_SERIAL_DEBUG(printf("FEATURE=%i\r\n",read_register(FEATURE)));
 
   //
   // Enable dynamic payload on pipes 0 & 1
